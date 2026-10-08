@@ -1,0 +1,48 @@
+# Rebuilds the deck every time a new ENTSO-E file is pushed to data/raw/
+name: Build electricity-mix deck
+
+on:
+  push:
+    paths:
+      - "data/raw/**.csv"
+      - "data/raw/**.tsv"
+      - "data/raw/**.zip"
+  workflow_dispatch:   # also runnable by hand from the Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Raw ENTSO-E files -> monthly table
+        run: python src/prepare_entsoe.py
+
+      - name: Monthly table -> PowerPoint
+        run: python src/build_deck.py
+
+      - name: Show data checks in the run summary
+        run: cat output/data_checks.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: electricity-mix-deck
+          path: output/
+
+      - name: Commit updated deck back to the repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898208+github-actions[bot]@users.noreply.github.com"
+          git add data/processed output
+          git diff --cached --quiet || git commit -m "Rebuild deck from new ENTSO-E data"
+          git push
